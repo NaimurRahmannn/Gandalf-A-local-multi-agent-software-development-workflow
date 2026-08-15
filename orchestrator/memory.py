@@ -20,6 +20,14 @@ MEMORY_FILES = (
     "team-rules.md",
 )
 
+RESULT_FILENAMES = {
+    "planning": "antigravity-plan.md",
+    "implementation": "codex-report.md",
+    "review": "cursor-review.md",
+    "final-review": "antigravity-final-review.md",
+    "improvement": "codex-improvement-report.md",
+}
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -66,7 +74,10 @@ class MemoryStore:
 
     @staticmethod
     def write_result(phase_dir: Path, order: int, result: AgentResult) -> Path:
-        path = phase_dir / "tasks" / f"{order:02d}-{result.step_id}.md"
+        task_path = phase_dir / "tasks" / f"{order:02d}-{result.step_id}.md"
+        artifact_path = phase_dir / RESULT_FILENAMES.get(
+            result.step_id, f"{result.agent_name}-{result.step_id}.md"
+        )
         metadata = "\n".join(f"- {key}: {value}" for key, value in result.metadata.items())
         metadata_section = f"\n## Metadata\n\n{metadata}\n" if metadata else ""
         body = (
@@ -76,8 +87,9 @@ class MemoryStore:
             f"- Generated: {utc_now()}\n"
             f"{metadata_section}\n## Handoff\n\n{result.content.rstrip()}\n"
         )
-        path.write_text(body, encoding="utf-8")
-        return path
+        task_path.write_text(body, encoding="utf-8")
+        artifact_path.write_text(body, encoding="utf-8")
+        return artifact_path
 
     def append_progress(self, phase_id: str, status: str, detail: str) -> None:
         path = self.memory_dir / "progress.md"

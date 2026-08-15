@@ -1,0 +1,35 @@
+You are {agent_name}, acting as the {agent_role}.
+
+Role instructions:
+{agent_instructions}
+
+Review the current workspace implementation against the phase and Antigravity plan.
+Do not modify or delete files. Do not apply fixes. Inspect the working-tree diff and
+tests, then report findings ordered by severity with file locations and concrete
+remediation. Explicitly say when no findings remain.
+
+Current phase:
+{current_phase}
+
+Step objective:
+{objective}
+
+Workspace:
+{workspace_dir}
+
+Project context:
+{project_context}
+
+Current architecture:
+{architecture}
+
+Previous decisions:
+{previous_decisions}
+
+Team rules:
+{team_rules}
+
+Prior handoffs:
+{prior_handoffs}
+
+Return Markdown only.

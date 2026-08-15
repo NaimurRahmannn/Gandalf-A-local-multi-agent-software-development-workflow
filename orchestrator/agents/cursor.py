@@ -1,10 +1,10 @@
-"""Cursor placeholder adapter."""
+"""Cursor CLI adapter."""
 
-from orchestrator.agents.base import BaseAgent
-from orchestrator.models import AgentContext, AgentResult
+from orchestrator.agents.base import ExternalCliAgent
+from orchestrator.models import AgentContext
 
 
-class CursorAgent(BaseAgent):
+class CursorAgent(ExternalCliAgent):
     name = "cursor"
     role = "QA reviewer and code reviewer"
     instructions = (
@@ -12,15 +12,8 @@ class CursorAgent(BaseAgent):
         "and test coverage; report findings by severity."
     )
 
-    def execute(self, context: AgentContext) -> AgentResult:
-        content = (
-            "## Review checklist\n\n"
-            "- Validate behavior against the plan and phase prompt.\n"
-            "- Review correctness, edge cases, security, and maintainability.\n"
-            "- Run or inspect tests and identify missing coverage.\n"
-            "- Classify findings as blocking, important, or suggestion.\n\n"
-            f"## Inputs reviewed\n\n{self.prior_handoffs(context)}\n\n"
-            "## Integration status\n\n"
-            "Placeholder handoff: connect the Cursor CLI/API in this agent's execute method."
-        )
-        return AgentResult(self.name, context.step_id, "Cursor QA and code review", content)
+    def template_name(self, context: AgentContext) -> str:
+        return "cursor_reviewer.txt"
+
+    def result_summary(self, context: AgentContext) -> str:
+        return "Cursor QA and code review"

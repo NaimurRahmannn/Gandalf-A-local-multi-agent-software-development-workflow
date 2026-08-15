@@ -11,8 +11,9 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from orchestrator.agents import AntigravityAgent, CodexAgent, CursorAgent
+from orchestrator.agents import build_agents
 from orchestrator.config import AppConfig, load_config
+from orchestrator.core.cli_runner import CliRunner
 from orchestrator.exceptions import OrchestratorError
 from orchestrator.memory import MemoryStore
 from orchestrator.workflow import WorkflowManager
@@ -57,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         store = MemoryStore(config.paths.memory_dir, config.paths.phases_dir)
         manager = WorkflowManager(
             config,
-            [AntigravityAgent(), CodexAgent(), CursorAgent()],
+            build_agents(config, CliRunner()),
             store,
         )
         phase_dir = manager.run(prompt)
