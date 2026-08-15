@@ -39,3 +39,15 @@ class GitSafetyError(OrchestratorError):
 
 class PromptTemplateError(OrchestratorError):
     """Raised when an agent prompt template is missing or invalid."""
+
+
+class GitCommitApprovalError(GitSafetyError):
+    """Raised when a commit is requested without explicit configuration approval."""
+
+
+class ResumeError(WorkflowError):
+    """Raised when a phase cannot be resumed safely."""
+
+
+class ReviewApprovalError(WorkflowError):
+    """Raised when review cycles end without the required approval."""

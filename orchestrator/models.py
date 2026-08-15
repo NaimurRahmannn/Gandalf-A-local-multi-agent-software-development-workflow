@@ -14,6 +14,7 @@ class PhaseStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     INTERRUPTED = "interrupted"
+    NEEDS_ATTENTION = "needs_attention"
 
 
 class StepStatus(StrEnum):

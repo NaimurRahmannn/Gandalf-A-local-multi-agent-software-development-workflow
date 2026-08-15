@@ -27,7 +27,10 @@ class ConfigAndAgentTests(unittest.TestCase):
             "agents:\n  antigravity:\n    enabled: false\n    command: custom-agy\n"
             "    arguments: ['--print', '{prompt}']\n    timeout_seconds: 42\n"
             "  codex:\n    command: custom-codex\n"
-            "  cursor:\n    command: custom-cursor\n",
+            "  cursor:\n    command: custom-cursor\n"
+            "workflow:\n  max_review_cycles: 4\n  require_approval: false\n"
+            "checks:\n  commands: ['python -m unittest']\n  timeout_seconds: 90\n"
+            "git:\n  allow_commit: true\n  commit_message: 'phase {phase_id}'\n",
             encoding="utf-8",
         )
         config = load_config(config_path, self.root)
@@ -38,6 +41,10 @@ class ConfigAndAgentTests(unittest.TestCase):
         self.assertFalse(config.agents["antigravity"].enabled)
         self.assertEqual("custom-agy", config.agents["antigravity"].command)
         self.assertEqual(42, config.agents["antigravity"].timeout_seconds)
+        self.assertEqual(4, config.workflow.max_review_cycles)
+        self.assertFalse(config.workflow.require_approval)
+        self.assertEqual(("python -m unittest",), config.checks.commands)
+        self.assertTrue(config.git.allow_commit)
         self.assertEqual(["antigravity", "codex", "cursor"], [agent.name for agent in agents])
 
     def test_rejects_invalid_timeout(self) -> None:

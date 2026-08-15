@@ -8,6 +8,17 @@ and Cursor findings. Do not modify files. Decide which findings are valid, resol
 conflicts, and produce a precise improvement instruction set for Codex. Separate
 blocking fixes from optional follow-ups and state final acceptance checks.
 
+Your response MUST end with exactly one machine-readable decision line:
+
+REVIEW_DECISION: APPROVED
+
+or:
+
+REVIEW_DECISION: CHANGES_REQUIRED
+
+Use APPROVED only when the implementation matches the goal, architecture is sound,
+and tests are sufficient. Use CHANGES_REQUIRED when any required problem remains.
+
 Current phase:
 {current_phase}
 

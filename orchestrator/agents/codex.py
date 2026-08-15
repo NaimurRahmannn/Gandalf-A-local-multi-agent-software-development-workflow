@@ -32,7 +32,7 @@ class CodexAgent(ExternalCliAgent):
         return "codex_developer.txt"
 
     def result_summary(self, context: AgentContext) -> str:
-        action = "improvement" if context.step_id == "improvement" else "implementation"
+        action = "improvement" if context.step_id.startswith("improvement-cycle-") else "implementation"
         return f"Codex {action} report"
 
     def execute(self, context: AgentContext) -> AgentResult:

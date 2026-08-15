@@ -10,7 +10,10 @@ def main() -> int:
     prompt = sys.stdin.read() if not sys.stdin.isatty() else " ".join(sys.argv[2:])
     if not prompt:
         prompt = " ".join(sys.argv[2:])
-    print(f"# {agent} output\n\nReceived {len(prompt)} prompt characters.")
+    output = f"# {agent} output\n\nReceived {len(prompt)} prompt characters."
+    if agent == "antigravity" and "REVIEW_DECISION" in prompt:
+        output += "\n\nREVIEW_DECISION: APPROVED"
+    print(output)
     return 0
 
 

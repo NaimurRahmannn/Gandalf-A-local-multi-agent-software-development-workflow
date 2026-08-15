@@ -23,3 +23,15 @@ agents:
 
 logging:
   level: INFO
+
+workflow:
+  max_review_cycles: 3
+  require_approval: true
+
+checks:
+  commands: []
+  timeout_seconds: 600
+
+git:
+  allow_commit: false
+  commit_message: "AI team: complete {phase_id}"
