@@ -1,0 +1,15 @@
+paths:
+  memory_dir: .ai-memory
+  workspace_dir: workspace
+  phases_dir: phases
+
+agents:
+  antigravity:
+    enabled: true
+  codex:
+    enabled: true
+  cursor:
+    enabled: true
+
+logging:
+  level: INFO
