@@ -18,7 +18,7 @@ agents:
   cursor:
     enabled: true
     command: "agent"
-    arguments: ["-p", "--output-format", "text", "{prompt}"]
+    arguments: ["--trust", "-p", "--output-format", "text", "{prompt}"]
     timeout_seconds: 600
 
 logging:

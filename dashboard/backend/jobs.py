@@ -80,6 +80,33 @@ class DashboardJobService:
         self.submit(phase["id"], resume=False)
         return phase
 
+    def resume_phase(self, dashboard_phase_id: str) -> dict[str, Any]:
+        phase = self.database.get_phase(dashboard_phase_id)
+        if phase is None:
+            raise DashboardServiceError("Phase not found.")
+        if phase["status"] != DashboardStatus.FAILED:
+            raise DashboardServiceError("Only failed phases can be resumed.")
+        if not phase.get("orchestrator_phase_id") or not phase.get("phase_dir"):
+            raise DashboardServiceError(
+                "This phase failed before resumable workflow state was created."
+            )
+        state_path = Path(phase["phase_dir"]) / "status.json"
+        if not state_path.is_file():
+            raise DashboardServiceError(
+                f"Persisted workflow state is missing: {state_path}"
+            )
+        if not self.database.reopen_failed_phase(dashboard_phase_id):
+            raise DashboardServiceError("Phase is no longer in a resumable failed state.")
+        self.database.add_notification(
+            phase["project_id"],
+            dashboard_phase_id,
+            "info",
+            "Phase resume requested; completed steps will not be replayed",
+        )
+        if not self.submit(dashboard_phase_id, resume=True):
+            raise DashboardServiceError("Phase resume is already running.")
+        return self.database.get_phase(dashboard_phase_id) or phase
+
     def submit(self, dashboard_phase_id: str, *, resume: bool) -> bool:
         with self._lock:
             current = self._jobs.get(dashboard_phase_id)

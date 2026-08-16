@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import shlex
 import shutil
 import signal
@@ -137,18 +138,27 @@ class CliRunner:
         if path.suffix:
             resolved = shutil.which(executable) or (str(path.resolve()) if path.is_file() else None)
         else:
-            # npm and Cursor install PowerShell shims that CreateProcess cannot launch
-            # directly. Prefer those over cmd/bat shims so prompt text stays argv data.
-            resolved = (
-                shutil.which(f"{executable}.ps1")
-                or shutil.which(f"{executable}.exe")
-                or shutil.which(f"{executable}.com")
-                or shutil.which(executable)
+            # Prefer native binaries when both a native CLI and an npm PowerShell
+            # shim are on PATH. Windows PowerShell's -File parser can reject a
+            # trailing lone "-" before the shim can pass it to tools such as
+            # `codex exec`, where it intentionally means "read stdin".
+            resolved = next(
+                (
+                    candidate
+                    for name in CliRunner._windows_command_candidates(executable)
+                    if (candidate := shutil.which(name)) is not None
+                ),
+                None,
             )
         if resolved is None:
             return command  # Popen produces the standard not-found diagnostic.
         suffix = Path(resolved).suffix.lower()
         if suffix == ".ps1":
+            codex_launcher = CliRunner._resolve_codex_npm_shim(
+                Path(resolved), command
+            )
+            if codex_launcher is not None:
+                return codex_launcher
             powershell = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
             if powershell is None:
                 raise CliNotFoundError(
@@ -186,6 +196,61 @@ class CliRunner:
                 "Configure a native executable or PowerShell shim instead."
             )
         return (resolved, *command[1:])
+
+    @staticmethod
+    def _windows_command_candidates(executable: str) -> tuple[str, ...]:
+        """Return safe Windows launcher candidates in execution priority order."""
+
+        return (
+            f"{executable}.exe",
+            f"{executable}.com",
+            f"{executable}.ps1",
+            executable,
+        )
+
+    @staticmethod
+    def _resolve_codex_npm_shim(
+        shim: Path, command: tuple[str, ...]
+    ) -> tuple[str, ...] | None:
+        """Resolve npm's Codex shim without passing arguments through PowerShell."""
+
+        if shim.stem.lower() != "codex":
+            return None
+        package_root = shim.parent / "node_modules" / "@openai" / "codex"
+        architecture = platform.machine().lower()
+        native_parts = {
+            "amd64": ("codex-win32-x64", "x86_64-pc-windows-msvc"),
+            "x86_64": ("codex-win32-x64", "x86_64-pc-windows-msvc"),
+            "arm64": ("codex-win32-arm64", "aarch64-pc-windows-msvc"),
+            "aarch64": ("codex-win32-arm64", "aarch64-pc-windows-msvc"),
+        }.get(architecture)
+        if native_parts is not None:
+            package_name, target = native_parts
+            native = (
+                package_root
+                / "node_modules"
+                / "@openai"
+                / package_name
+                / "vendor"
+                / target
+                / "bin"
+                / "codex.exe"
+            )
+            if native.is_file():
+                return (str(native), *command[1:])
+
+        entry_point = package_root / "bin" / "codex.js"
+        if not entry_point.is_file():
+            return None
+        bundled_node = shim.parent / "node.exe"
+        node = (
+            str(bundled_node)
+            if bundled_node.is_file()
+            else shutil.which("node.exe") or shutil.which("node")
+        )
+        if node is None:
+            return None
+        return (node, str(entry_point), *command[1:])
 
     @staticmethod
     def _terminate_tree(process: subprocess.Popen[str]) -> None:

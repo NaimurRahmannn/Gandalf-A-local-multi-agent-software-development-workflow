@@ -197,8 +197,9 @@ class MemoryStore:
 
     def append_progress(self, phase_id: str, status: str, detail: str) -> None:
         path = self.memory_dir / "progress.md"
+        safe_detail = " ".join(detail.split()) or "No details provided"
         with path.open("a", encoding="utf-8") as stream:
-            stream.write(f"\n- {utc_now()} | `{phase_id}` | **{status}** | {detail}\n")
+            stream.write(f"\n- {utc_now()} | `{phase_id}` | **{status}** | {safe_detail}\n")
 
     def update_project_memory(
         self,

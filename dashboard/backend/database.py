@@ -177,6 +177,31 @@ class DashboardDatabase:
                 (phase_id, status, current_agent, message, now),
             )
 
+    def reopen_failed_phase(self, phase_id: str) -> bool:
+        """Atomically reopen a failed phase while retaining its event history."""
+
+        now = utc_now()
+        message = "Resume requested; continuing from the persisted workflow action"
+        with self.connection() as connection:
+            cursor = connection.execute(
+                "UPDATE phases SET status=?,current_agent=NULL,error=NULL,updated_at=?,"
+                "completed_at=NULL WHERE id=? AND status=?",
+                (
+                    DashboardStatus.CREATED,
+                    now,
+                    phase_id,
+                    DashboardStatus.FAILED,
+                ),
+            )
+            if cursor.rowcount != 1:
+                return False
+            connection.execute(
+                "INSERT INTO phase_events(phase_id,status,current_agent,message,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (phase_id, DashboardStatus.CREATED, None, message, now),
+            )
+        return True
+
     def list_events(self, phase_id: str, after_id: int = 0) -> list[dict[str, Any]]:
         with self.connection() as connection:
             rows = connection.execute(

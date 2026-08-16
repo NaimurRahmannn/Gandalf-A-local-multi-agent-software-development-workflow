@@ -60,7 +60,10 @@ REQUIRED_AGENTS = ("antigravity", "codex", "cursor")
 AGENT_DEFAULTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "antigravity": ("agy", ("--mode", "plan", "-p", "{prompt}")),
     "codex": ("codex", ("exec", "--sandbox", "workspace-write", "--color", "never", "-")),
-    "cursor": ("agent", ("-p", "--output-format", "text", "{prompt}")),
+    "cursor": (
+        "agent",
+        ("--trust", "-p", "--output-format", "text", "{prompt}"),
+    ),
 }
 
 

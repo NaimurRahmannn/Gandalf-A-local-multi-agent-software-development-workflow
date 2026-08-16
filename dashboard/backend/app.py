@@ -135,6 +135,13 @@ def create_app(
     def get_phase(phase_id: str, _username: auth) -> dict[str, Any]:
         return _phase_detail(db, phase_id)
 
+    @app.post("/phases/{phase_id}/resume", status_code=status.HTTP_202_ACCEPTED)
+    def resume_phase(phase_id: str, _username: auth) -> dict[str, Any]:
+        try:
+            return job_service.resume_phase(phase_id)
+        except DashboardServiceError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
     @app.post("/phases/{phase_id}/approve")
     def approve_phase(
         phase_id: str, payload: ApprovalInput, _username: auth

@@ -28,7 +28,9 @@ flags can change independently of this project.
   `cursor-agent`; update the configured command if needed. See [Cursor headless mode](https://docs.cursor.com/en/cli/headless).
 
 The configured adapters use non-interactive modes. They never add Antigravity's
-permission bypass, Codex's sandbox bypass, or Cursor's `--force` flag.
+permission bypass, Codex's sandbox bypass, or Cursor's `--force`/`--yolo` flags.
+Cursor receives `--trust` so dashboard-created project roots can be reviewed without
+an interactive trust prompt; this flag does not force-approve commands.
 
 ## Configure
 
@@ -196,6 +198,7 @@ endpoints:
 
 - `GET/POST /projects` and `GET /projects/{id}`
 - `GET /phases`, `POST /phases/start`, and `GET /phases/{id}`
+- `POST /phases/{id}/resume` to continue a failed phase from its persisted action
 - `POST /phases/{id}/approve`, `/reject`, or `/request-changes`
 - `GET /agents/status`, `GET /logs/{phase_id}`, and `GET /events/{phase_id}`
 - `GET /notifications` and `POST /notifications/{id}/read`
@@ -236,6 +239,9 @@ the same phase entry.
 - **Needs attention:** read `review.md` and `phase-report.md`; resolve or start a
   focused follow-up phase.
 - **Interrupted/failed:** fix the external cause and run `--resume <phase-id>`.
+- **Failed dashboard phase:** correct the external cause, open the phase, and select
+  **Resume from failure**. Completed agent steps are loaded from `handoffs.json` and
+  the workflow retries `next_action` instead of starting again from planning.
 - **Dashboard will not start:** set `AI_TEAM_DASHBOARD_PASSWORD` in the same shell
   that launches Python and confirm `dashboard/config.yaml` paths exist.
 - **Dashboard shows an agent as missing:** install that CLI or update its configured
