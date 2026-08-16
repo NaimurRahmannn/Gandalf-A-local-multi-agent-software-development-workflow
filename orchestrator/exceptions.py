@@ -51,3 +51,7 @@ class ResumeError(WorkflowError):
 
 class ReviewApprovalError(WorkflowError):
     """Raised when review cycles end without the required approval."""
+
+
+class HumanApprovalRejected(WorkflowError):
+    """Raised when a human explicitly rejects a dashboard approval request."""

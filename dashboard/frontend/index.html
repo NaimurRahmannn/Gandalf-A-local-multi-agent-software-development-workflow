@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Team Control Center</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">A</span><div><strong>AI Team</strong><small>Control Center</small></div></div>
+    <nav>
+      <a href="#/" data-route="home">Overview</a>
+      <a href="#/projects" data-route="projects">Projects</a>
+      <a href="#/notifications" data-route="notifications">Notifications <span id="notice-count" class="badge">0</span></a>
+    </nav>
+    <section class="agent-panel">
+      <p class="eyebrow">Agent status</p>
+      <div id="agent-status">Loading…</div>
+    </section>
+  </aside>
+  <main>
+    <header><div><p class="eyebrow">Local orchestration</p><h1 id="page-title">Engineering overview</h1></div><button id="refresh" class="secondary">Refresh</button></header>
+    <div id="flash" role="status"></div>
+    <section id="app" class="content"><div class="loading">Loading dashboard…</div></section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

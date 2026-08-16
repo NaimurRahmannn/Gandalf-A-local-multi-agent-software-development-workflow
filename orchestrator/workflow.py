@@ -12,9 +12,22 @@ from orchestrator.agents.base import BaseAgent
 from orchestrator.config import AppConfig
 from orchestrator.core.git_manager import GitManager
 from orchestrator.core.test_runner import TestRunner
-from orchestrator.exceptions import AgentExecutionError, ResumeError, WorkflowError
+from orchestrator.core.workflow_observer import NullWorkflowObserver, WorkflowObserver
+from orchestrator.exceptions import (
+    AgentExecutionError,
+    HumanApprovalRejected,
+    ResumeError,
+    WorkflowError,
+)
 from orchestrator.memory import MemoryStore, utc_now
-from orchestrator.models import AgentContext, AgentResult, PhaseStatus, StepStatus
+from orchestrator.models import (
+    AgentContext,
+    AgentResult,
+    ApprovalStatus,
+    DashboardStatus,
+    PhaseStatus,
+    StepStatus,
+)
 
 LOGGER = logging.getLogger(__name__)
 DECISION_PATTERN = re.compile(
@@ -33,12 +46,14 @@ class WorkflowManager:
         memory_store: MemoryStore,
         git_manager: GitManager,
         test_runner: TestRunner,
+        observer: WorkflowObserver | None = None,
     ) -> None:
         self.config = config
         self.agents = {agent.name: agent for agent in agents}
         self.memory_store = memory_store
         self.git_manager = git_manager
         self.test_runner = test_runner
+        self.observer = observer or NullWorkflowObserver()
         missing = {"antigravity", "codex", "cursor"} - self.agents.keys()
         if missing:
             raise WorkflowError(f"No agent implementation registered for: {', '.join(sorted(missing))}")
@@ -127,9 +142,18 @@ class WorkflowManager:
                     if approved or cycle >= self.config.workflow.max_review_cycles:
                         if not approved:
                             state["remaining_issues"] = decision_result.content
-                        self._advance(state, state_path, "finalize")
+                        state["post_approval_action"] = (
+                            "commit_approval" if self.config.git.allow_commit else "finalize"
+                        )
                     else:
-                        self._advance(state, state_path, "improvement")
+                        state["post_approval_action"] = "improvement"
+                    self._advance(state, state_path, "human_approval")
+                elif action == "human_approval":
+                    if self._handle_human_approval(phase_dir, state, state_path, results, cycle):
+                        return phase_dir
+                elif action == "commit_approval":
+                    if self._handle_commit_approval(phase_dir, state, state_path, results, cycle):
+                        return phase_dir
                 elif action == "improvement":
                     self._execute_agent(
                         state, state_path, phase_dir, memory, results,
@@ -152,6 +176,10 @@ class WorkflowManager:
                 state["phase_id"], PhaseStatus.INTERRUPTED, "Interrupted by user; phase can be resumed"
             )
             LOGGER.warning("Phase %s was interrupted and can be resumed", state["phase_id"])
+            self._publish(
+                phase_dir, state, DashboardStatus.FAILED, None,
+                "Workflow interrupted; resume is available",
+            )
             raise
         except Exception as exc:
             self._mark_running_step(state, StepStatus.FAILED, str(exc))
@@ -160,6 +188,8 @@ class WorkflowManager:
                 state["phase_id"], PhaseStatus.FAILED, f"{exc}; phase can be resumed"
             )
             self._write_failure_report(phase_dir, state, results, str(exc))
+            self._publish(phase_dir, state, DashboardStatus.FAILED, None, str(exc))
+            self.observer.notify(state["phase_id"], "error", f"Workflow failed: {exc}")
             LOGGER.exception("Phase %s failed at %s", state["phase_id"], state["next_action"])
             raise
         finally:
@@ -198,6 +228,14 @@ class WorkflowManager:
         step.update(status=StepStatus.RUNNING, started_at=utc_now(), finished_at=None, error=None)
         self.memory_store.write_json_atomic(state_path, state)
         LOGGER.info("Executing %s with %s", step_id, agent_name)
+        dashboard_status = self._dashboard_status_for_step(step_id, agent_name)
+        self._publish(
+            phase_dir,
+            state,
+            dashboard_status,
+            agent_name,
+            f"Running {self.config.agents[agent_name].command} for {step_id}",
+        )
 
         if not self.config.agents[agent_name].enabled:
             result = AgentResult(agent_name, step_id, f"{agent_name} disabled", "Agent disabled in config.")
@@ -233,6 +271,9 @@ class WorkflowManager:
             output=str(result_path.relative_to(phase_dir)),
         )
         self.memory_store.write_json_atomic(state_path, state)
+        message = f"{agent_name} completed {step_id}"
+        level = "warning" if agent_name == "cursor" and "critical" in result.content.lower() else "info"
+        self.observer.notify(state["phase_id"], level, message)
         return result
 
     def _execute_tests(
@@ -261,6 +302,13 @@ class WorkflowManager:
             state["steps"].append(step)
         step.update(status=StepStatus.RUNNING, started_at=utc_now(), error=None)
         self.memory_store.write_json_atomic(state_path, state)
+        self._publish(
+            phase_dir,
+            state,
+            DashboardStatus.TESTING,
+            "test-runner",
+            f"Running configured tests for cycle {cycle}",
+        )
         suite = self.test_runner.run(self.config.paths.workspace_dir, phase_dir, cycle)
         markdown = self.test_runner.to_markdown(suite)
         result = AgentResult(
@@ -274,6 +322,11 @@ class WorkflowManager:
         self.memory_store.write_handoffs(phase_dir, results)
         step.update(status=StepStatus.COMPLETED, finished_at=utc_now())
         self.memory_store.write_json_atomic(state_path, state)
+        self.observer.notify(
+            state["phase_id"],
+            "info" if suite.passed else "warning",
+            f"Test cycle {cycle} {'passed' if suite.passed else 'failed'}",
+        )
 
     def _ensure_before_snapshot(self, phase_dir: Path) -> None:
         output = phase_dir / "before-state.txt"
@@ -285,6 +338,109 @@ class WorkflowManager:
             output,
             label="before implementation",
         )
+
+    def _handle_human_approval(
+        self,
+        phase_dir: Path,
+        state: dict[str, Any],
+        state_path: Path,
+        results: list[AgentResult],
+        cycle: int,
+    ) -> bool:
+        gate = f"final-changes-cycle-{cycle}"
+        resolution = self.observer.approval_resolution(state["phase_id"], gate)
+        if resolution.status == ApprovalStatus.PENDING:
+            message = f"Human approval required after review cycle {cycle}"
+            self.observer.request_approval(state["phase_id"], gate, message, phase_dir)
+            state.update(
+                status=PhaseStatus.WAITING_APPROVAL,
+                waiting_for_approval=gate,
+                updated_at=utc_now(),
+            )
+            self.memory_store.write_json_atomic(state_path, state)
+            self._publish(
+                phase_dir, state, DashboardStatus.WAITING_APPROVAL, None, message
+            )
+            self.observer.notify(state["phase_id"], "warning", "Approval required")
+            return True
+        if resolution.status == ApprovalStatus.REJECTED:
+            raise HumanApprovalRejected(
+                f"Human rejected final changes for review cycle {cycle}: {resolution.feedback}"
+            )
+        self._record_human_feedback(phase_dir, state, results, gate, resolution.feedback)
+        target = str(state.get("post_approval_action") or "finalize")
+        if resolution.status == ApprovalStatus.CHANGES_REQUESTED:
+            state.update(
+                approved=False,
+                review_decision="CHANGES_REQUIRED",
+                remaining_issues=resolution.feedback or "Human requested additional changes.",
+            )
+            target = "improvement" if cycle < self.config.workflow.max_review_cycles else "finalize"
+        state.update(status=PhaseStatus.RUNNING, waiting_for_approval=None)
+        self._advance(state, state_path, target)
+        return False
+
+    def _handle_commit_approval(
+        self,
+        phase_dir: Path,
+        state: dict[str, Any],
+        state_path: Path,
+        results: list[AgentResult],
+        cycle: int,
+    ) -> bool:
+        gate = "git-commit"
+        resolution = self.observer.approval_resolution(state["phase_id"], gate)
+        if resolution.status == ApprovalStatus.PENDING:
+            message = "Human approval required before Git commit"
+            self.observer.request_approval(state["phase_id"], gate, message, phase_dir)
+            state.update(
+                status=PhaseStatus.WAITING_APPROVAL,
+                waiting_for_approval=gate,
+                updated_at=utc_now(),
+            )
+            self.memory_store.write_json_atomic(state_path, state)
+            self._publish(
+                phase_dir, state, DashboardStatus.WAITING_APPROVAL, None, message
+            )
+            self.observer.notify(state["phase_id"], "warning", "Git commit approval required")
+            return True
+        if resolution.status == ApprovalStatus.REJECTED:
+            raise HumanApprovalRejected(f"Human rejected Git commit: {resolution.feedback}")
+        self._record_human_feedback(phase_dir, state, results, gate, resolution.feedback)
+        state.update(status=PhaseStatus.RUNNING, waiting_for_approval=None)
+        if resolution.status == ApprovalStatus.CHANGES_REQUESTED:
+            state.update(
+                approved=False,
+                review_decision="CHANGES_REQUIRED",
+                remaining_issues=resolution.feedback or "Human requested changes before commit.",
+                human_commit_approved=False,
+            )
+            target = "improvement" if cycle < self.config.workflow.max_review_cycles else "finalize"
+        else:
+            state["human_commit_approved"] = True
+            target = "finalize"
+        self._advance(state, state_path, target)
+        return False
+
+    def _record_human_feedback(
+        self,
+        phase_dir: Path,
+        state: dict[str, Any],
+        results: list[AgentResult],
+        gate: str,
+        feedback: str,
+    ) -> None:
+        if not feedback or any(item.step_id == f"human-{gate}" for item in results):
+            return
+        results.append(
+            AgentResult(
+                "human",
+                f"human-{gate}",
+                f"Human feedback for {gate}",
+                feedback,
+            )
+        )
+        self.memory_store.write_handoffs(phase_dir, results)
 
     def _collect_git_snapshot(self, phase_dir: Path) -> tuple[str, tuple[str, ...]]:
         log_path = phase_dir / "logs" / "git-manager.log"
@@ -317,7 +473,7 @@ class WorkflowManager:
             else PhaseStatus.NEEDS_ATTENTION
         )
         commit = None
-        if self.config.git.allow_commit:
+        if self.config.git.allow_commit and state.get("human_commit_approved"):
             message = self.config.git.commit_message.format(phase_id=state["phase_id"])
             commit = self.git_manager.create_commit(
                 self.config.paths.workspace_dir,
@@ -332,6 +488,21 @@ class WorkflowManager:
         self._finish(state, state_path, status)
         self.memory_store.append_progress(
             state["phase_id"], status, f"Workflow finished with decision {decision}"
+        )
+        dashboard_status = (
+            DashboardStatus.COMPLETED if status == PhaseStatus.COMPLETED else DashboardStatus.FAILED
+        )
+        self._publish(
+            phase_dir,
+            state,
+            dashboard_status,
+            None,
+            f"Workflow finished with decision {decision}",
+        )
+        self.observer.notify(
+            state["phase_id"],
+            "success" if status == PhaseStatus.COMPLETED else "warning",
+            f"Phase finished with status {status}",
         )
         LOGGER.info("Phase %s finished with status %s", state["phase_id"], status)
 
@@ -444,8 +615,43 @@ class WorkflowManager:
             "approved": False,
             "remaining_issues": None,
             "commit": None,
+            "waiting_for_approval": None,
+            "post_approval_action": None,
+            "human_commit_approved": False,
             "steps": [],
         }
+
+    @staticmethod
+    def _dashboard_status_for_step(step_id: str, agent_name: str) -> DashboardStatus:
+        if step_id == "planning":
+            return DashboardStatus.PLANNING
+        if step_id == "implementation":
+            return DashboardStatus.CODING
+        if step_id.startswith("improvement"):
+            return DashboardStatus.IMPROVING
+        if agent_name in {"cursor", "antigravity"} and "review" in step_id:
+            return DashboardStatus.REVIEWING
+        return DashboardStatus.CODING
+
+    def _publish(
+        self,
+        phase_dir: Path,
+        state: dict[str, Any],
+        status: DashboardStatus,
+        current_agent: str | None,
+        message: str,
+    ) -> None:
+        self.memory_store.write_phase_status(
+            phase_dir,
+            state["phase_id"],
+            state["prompt"],
+            status,
+            current_agent,
+            message,
+        )
+        self.observer.on_transition(
+            state["phase_id"], status, current_agent, message, phase_dir
+        )
 
     @staticmethod
     def _attach_phase_log(phase_dir: Path) -> tuple[logging.FileHandler, int]:

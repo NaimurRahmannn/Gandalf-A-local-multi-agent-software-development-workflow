@@ -1,0 +1,15 @@
+server:
+  host: 127.0.0.1
+  port: 8000
+  workers: 2
+
+security:
+  username: admin
+  password_env: AI_TEAM_DASHBOARD_PASSWORD
+  session_secret_env: AI_TEAM_SESSION_SECRET
+
+paths:
+  database: dashboard/data/dashboard.db
+  projects_root: workspace
+  orchestrator_config: orchestrator/config.yaml
+  frontend: dashboard/frontend

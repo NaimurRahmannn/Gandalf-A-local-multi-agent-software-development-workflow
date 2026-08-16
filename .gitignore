@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 .ai-memory/phases/
 tests/runtime/
+dashboard/data/*.db*
+workspace/*/

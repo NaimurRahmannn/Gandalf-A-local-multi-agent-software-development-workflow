@@ -15,6 +15,7 @@ class PhaseStatus(StrEnum):
     FAILED = "failed"
     INTERRUPTED = "interrupted"
     NEEDS_ATTENTION = "needs_attention"
+    WAITING_APPROVAL = "waiting_approval"
 
 
 class StepStatus(StrEnum):
@@ -23,6 +24,25 @@ class StepStatus(StrEnum):
     COMPLETED = "completed"
     SKIPPED = "skipped"
     FAILED = "failed"
+
+
+class DashboardStatus(StrEnum):
+    CREATED = "CREATED"
+    PLANNING = "PLANNING"
+    CODING = "CODING"
+    REVIEWING = "REVIEWING"
+    IMPROVING = "IMPROVING"
+    TESTING = "TESTING"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CHANGES_REQUESTED = "changes_requested"
 
 
 @dataclass(frozen=True, slots=True)

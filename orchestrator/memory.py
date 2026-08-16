@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from orchestrator.models import AgentResult
+from orchestrator.models import AgentResult, DashboardStatus
 
 
 MEMORY_FILES = (
@@ -71,6 +71,14 @@ class MemoryStore:
         for filename in PHASE_DOCUMENTS:
             (phase_dir / filename).touch()
         self.write_json_atomic(phase_dir / "handoffs.json", {"results": []})
+        self.write_phase_status(
+            phase_dir,
+            phase_id,
+            prompt,
+            DashboardStatus.CREATED,
+            None,
+            "Phase created",
+        )
         return phase_id, phase_dir
 
     @staticmethod
@@ -78,6 +86,27 @@ class MemoryStore:
         temporary = path.with_suffix(path.suffix + ".tmp")
         temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         temporary.replace(path)
+
+    @staticmethod
+    def write_phase_status(
+        phase_dir: Path,
+        phase_id: str,
+        prompt: str,
+        status: DashboardStatus,
+        current_agent: str | None,
+        message: str,
+    ) -> None:
+        MemoryStore.write_json_atomic(
+            phase_dir / "phase-status.json",
+            {
+                "phase_id": phase_id,
+                "phase": prompt,
+                "status": status,
+                "current_agent": current_agent,
+                "message": message,
+                "updated_at": utc_now(),
+            },
+        )
 
     @staticmethod
     def write_result(phase_dir: Path, order: int, result: AgentResult) -> Path:
